@@ -1,0 +1,39 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@jax-js/jax':
+        specifier: link:/Users/caden/Programming/jax-js
+        version: link:../jax-js
+      '@jax-js/loaders':
+        specifier: link:/Users/caden/Programming/jax-js/packages/loaders
+        version: link:../jax-js/packages/loaders
+      '@jax-js/onnx':
+        specifier: link:/Users/caden/Programming/jax-js/packages/onnx
+        version: link:../jax-js/packages/onnx
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.3
+        version: 25.2.3
+
+packages:
+
+  '@types/node@25.2.3':
+    resolution: {integrity: sha512-m0jEgYlYz+mDJZ2+F4v8D1AyQb+QzsNqRuI7xg1VQX/KlKS0qT9r1Mo16yo5F/MtifXFgaofIFsdFMox2SxIbQ==}
+
+  undici-types@7.16.0:
+    resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
+
+snapshots:
+
+  '@types/node@25.2.3':
+    dependencies:
+      undici-types: 7.16.0
+
+  undici-types@7.16.0: {}

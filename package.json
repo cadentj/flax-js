@@ -1,0 +1,11 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@jax-js/jax": "link:/Users/caden/Programming/jax-js",
+    "@jax-js/loaders": "link:/Users/caden/Programming/jax-js/packages/loaders",
+    "@jax-js/onnx": "link:/Users/caden/Programming/jax-js/packages/onnx"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3"
+  }
+}
