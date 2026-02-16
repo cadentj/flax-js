@@ -1,2 +1,2 @@
-export { Embed, runEmbed, Linear, runLinear } from "./linear";
-export { LayerNorm, runLayerNorm } from "./normalization";
+export { type Embed, runEmbed, type Linear, runLinear } from "./linear";
+export { type LayerNorm, runLayerNorm } from "./normalization";

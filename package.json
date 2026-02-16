@@ -1,5 +1,10 @@
 {
+  "name": "flax-js",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
   "dependencies": {
     "@jax-js/jax": "link:/Users/caden/Programming/jax-js",
     "@jax-js/loaders": "link:/Users/caden/Programming/jax-js/packages/loaders",

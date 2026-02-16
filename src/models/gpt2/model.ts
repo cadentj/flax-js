@@ -1,10 +1,10 @@
 import { numpy as np, nn, jit } from "@jax-js/jax";
 import {
-    Embed,
+    type Embed,
     runEmbed,
-    Linear,
+    type Linear,
     runLinear,
-    LayerNorm,
+    type LayerNorm,
     runLayerNorm,
 } from "../../nn";
 
@@ -27,7 +27,7 @@ type GPT2Attention = {
     oProj: Linear;
 };
 
-const runGPT2Attention = jit(function runGPT2Attention(
+function runGPT2Attention(
     { qProj, kProj, vProj, oProj }: GPT2Attention,
     x: np.Array,
     numHeads: number,
@@ -36,8 +36,8 @@ const runGPT2Attention = jit(function runGPT2Attention(
     const headDim = D / numHeads;
 
     // Project to q, k, v: [B, L, D]
-    let q = runLinear(qProj, x);
-    let k = runLinear(kProj, x);
+    let q = runLinear(qProj, x.ref);
+    let k = runLinear(kProj, x.ref);
     let v = runLinear(vProj, x);
 
     // Reshape to [B, L, H, K] for multi-head attention
@@ -53,13 +53,25 @@ const runGPT2Attention = jit(function runGPT2Attention(
     out = runLinear(oProj, out);
 
     return out;
-});
+}
+
+type GPT2MLP = {
+    cFc: Linear;
+    cProj: Linear;
+};
+
+function runGPT2MLP({ cFc, cProj }: GPT2MLP, x: np.Array): np.Array {
+    x = runLinear(cFc, x);
+    x = nn.gelu(x);
+    x = runLinear(cProj, x);
+    return x;
+}
 
 type GPT2Layer = {
     ln1: LayerNorm;
     attn: GPT2Attention;
     ln2: LayerNorm;
-    mlp: Linear;
+    mlp: GPT2MLP;
 };
 
 const runGPT2Layer = jit(function runGPT2Layer(
@@ -67,26 +79,29 @@ const runGPT2Layer = jit(function runGPT2Layer(
     x: np.Array,
     { numHeads }: GPT2Config,
 ): np.Array {
-    let out = runLayerNorm(ln1, x);
-    out = runGPT2Attention(attn, out, numHeads);
-    out = runLayerNorm(ln2, out);
-    out = runLinear(mlp, out);
-    return out;
-});
+    let out = runGPT2Attention(attn, runLayerNorm(ln1, x.ref), numHeads);
+    x = x.add(out);
+    out = runGPT2MLP(mlp, runLayerNorm(ln2, x.ref));
+    x = x.add(out);
+    return x;
+}, { staticArgnums: [2] });
 
 const runGPT2 = jit(function runGPT2(
     { wte, wpe, h, lnF, lmHead }: GPT2,
     x: np.Array,
     { numHeads }: GPT2Config,
 ): np.Array {
-    let out = runEmbed(wte, x);
-    out = runEmbed(wpe, out);
+    console.log("point 2", x.refCount);
+    const L = x.shape[1];
+    const positions = np.arange(L).astype(np.int32);
+    let out = runEmbed(wte, x).add(runEmbed(wpe, positions));
     for (const layer of h) {
+        console.log("point 3", out.refCount);
         out = runGPT2Layer(layer, out, { numHeads });
     }
     out = runLayerNorm(lnF, out);
     out = runLinear(lmHead, out);
     return out;
-});
+}, { staticArgnums: [2] });
 
 export { runGPT2, GPT2 }

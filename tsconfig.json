@@ -7,9 +7,14 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "declaration": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "flax-js": ["./src/index.ts"],
+      "flax-js/*": ["./src/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "models"]
 }
