@@ -1,6 +1,6 @@
 // Combinators of modules, such as a Sequential
 
-import { Module } from "./module.ts";
+import { Module, Params } from "./module.ts";
 import { numpy as np } from "@jax-js/jax";
 
 class Sequential extends Module {
@@ -11,12 +11,12 @@ class Sequential extends Module {
         this.layers = layers;
     }
 
-    forward(x: np.Array) {
-        let output = this.layers[0].forward(x);
-        for (let i = 1; i < this.layers.length; i++) {
-            output = this.layers[i].forward(output);
+    forward(params: Params, x: np.Array): np.Array {
+        const layerParams = params.layers as Params[];
+        for (let i = 0; i < this.layers.length; i++) {
+            x = this.layers[i].forward(layerParams[i], x);
         }
-        return output;
+        return x;
     }
 }
 

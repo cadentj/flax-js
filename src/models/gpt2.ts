@@ -1,6 +1,6 @@
 import { numpy as np } from "@jax-js/jax";
 import { nn } from "@jax-js/jax";
-import { Embed, Linear, LayerNorm, Module } from "../nn";
+import { Embed, Linear, LayerNorm, Module, Params } from "../nn";
 import { createCausalMask } from "../utils";
 
 /**
@@ -60,7 +60,7 @@ class GPT2Attention extends Module {
         this.oProj = new Linear(this.nEmbd, this.nEmbd);
     }
 
-    forward(x: np.Array, mask: np.Array): np.Array {
+    forward(params: Params, x: np.Array, mask: np.Array): np.Array {
         const shape = x.shape;
         const B = shape[0];
         const L = shape[1];
@@ -68,9 +68,9 @@ class GPT2Attention extends Module {
         const K = this.headDim;
 
         // Project to q, k, v: [B, L, D]
-        let q = this.qProj.forward(x);
-        let k = this.kProj.forward(x);
-        let v = this.vProj.forward(x);
+        let q = this.qProj.forward(params.qProj as Params, x);
+        let k = this.kProj.forward(params.kProj as Params, x);
+        let v = this.vProj.forward(params.vProj as Params, x);
 
         // Reshape to [B, L, H, K] then transpose to [B, H, L, K]
         q = np.transpose(np.reshape(q, [B, L, H, K]), [0, 2, 1, 3]);
@@ -81,13 +81,13 @@ class GPT2Attention extends Module {
         let scores = np.matmul(q, np.transpose(k, [0, 1, 3, 2]));
         scores = scores.mul(1 / Math.sqrt(K));
         scores = scores.add(mask);
-        let weights = nn.softmax(scores, -1);
+        const weights = nn.softmax(scores, -1);
         let out = np.matmul(weights, v); // [B, H, L, K]
 
         // Reshape back to [B, L, D]
         out = np.transpose(out, [0, 2, 1, 3]);
         out = np.reshape(out, [B, L, this.nEmbd]);
-        return this.oProj.forward(out);
+        return this.oProj.forward(params.oProj as Params, out);
     }
 }
 
@@ -102,10 +102,10 @@ class GPT2MLP extends Module {
         this.downProj = new Linear(config.nEmbd * 4, config.nEmbd);
     }
 
-    forward(x: np.Array): np.Array {
-        let h = this.upProj.forward(x);
+    forward(params: Params, x: np.Array): np.Array {
+        let h = this.upProj.forward(params.upProj as Params, x);
         h = nn.gelu(h, { approximate: true });
-        h = this.downProj.forward(h);
+        h = this.downProj.forward(params.downProj as Params, h);
         return h;
     }
 }
@@ -124,17 +124,17 @@ class GPT2Block extends Module {
         this.mlp = new GPT2MLP(config);
     }
 
-    forward(x: np.Array, mask: np.Array): np.Array {
+    forward(params: Params, x: np.Array, mask: np.Array): np.Array {
         // Pre-LN attention with residual
         let residual = x;
-        x = this.inputLayerNorm.forward(x);
-        x = this.self_attn.forward(x, mask);
+        x = this.inputLayerNorm.forward(params.inputLayerNorm as Params, x);
+        x = this.self_attn.forward(params.self_attn as Params, x, mask);
         x = x.add(residual);
 
         // Pre-LN MLP with residual
         residual = x;
-        x = this.postAttentionLayerNorm.forward(x);
-        x = this.mlp.forward(x);
+        x = this.postAttentionLayerNorm.forward(params.postAttentionLayerNorm as Params, x);
+        x = this.mlp.forward(params.mlp as Params, x);
         x = x.add(residual);
         return x;
     }
@@ -164,24 +164,26 @@ class GPT2 extends Module {
         this.lmHead = new Linear(config.nEmbd, config.vocabSize, false);
     }
 
-    forward(inputIds: np.Array): np.Array {
+    forward(params: Params, inputIds: np.Array): np.Array {
         const L = inputIds.shape[1];
 
         // Token + positional embeddings
         const positions = np.arange(L);
-        let x = this.embed_tokens.forward(inputIds).add(this.embed_positions.forward(positions));
+        let x = this.embed_tokens.forward(params.embed_tokens as Params, inputIds)
+            .add(this.embed_positions.forward(params.embed_positions as Params, positions));
 
         // Causal mask: [1, 1, L, L]
         const mask = createCausalMask(L);
 
         // Transformer blocks
-        for (const block of this.blocks) {
-            x = block.forward(x, mask);
+        const blockParams = params.blocks as Params[];
+        for (let i = 0; i < this.blocks.length; i++) {
+            x = this.blocks[i].forward(blockParams[i], x, mask);
         }
 
         // Final layer norm + LM head
-        x = this.lnF.forward(x);
-        const logits = this.lmHead.forward(x);
+        x = this.lnF.forward(params.lnF as Params, x);
+        const logits = this.lmHead.forward(params.lmHead as Params, x);
         return logits;
     }
 }
