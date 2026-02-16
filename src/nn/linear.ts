@@ -32,3 +32,23 @@ class Linear extends Module {
 }
 
 export { Linear };
+
+class Embed extends Module {
+    numEmbeddings: number;
+    embedding: np.Array;
+
+    constructor(numEmbeddings: number, embeddingDim: number) {
+        super();
+        this.numEmbeddings = numEmbeddings;
+        this.embedding = np.zeros([numEmbeddings, embeddingDim]);
+    }
+    
+    forward(inputs: np.Array): np.Array {
+        if (inputs.dtype !== "int32") {
+            throw new Error("Embed input must be of type int32");
+        }
+        return np.take(this.embedding, inputs, 0);
+    }
+}
+
+export { Embed };

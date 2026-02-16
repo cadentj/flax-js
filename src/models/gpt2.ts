@@ -1,6 +1,7 @@
 import { numpy as np } from "@jax-js/jax";
 import { nn } from "@jax-js/jax";
-import { Linear, LayerNorm, Module, Sequential } from "../nn";
+import { Embed, Linear, LayerNorm, Module } from "../nn";
+import { createCausalMask } from "../utils";
 
 /**
 Dimension key:
@@ -21,63 +22,72 @@ class GPT2Config {
     vocabSize: number;
     nLayer: number;
     nHead: number;
-    nKvHead: number;
     nEmbd: number;
-    windowPattern: string;
 
     constructor(
-        sequenceLen: number = 2048,
-        vocabSize: number = 32768,
+        sequenceLen: number = 1024,
+        vocabSize: number = 50257,
         nLayer: number = 12,
-        nHead: number = 6,
-        nKvHead: number = 6,
+        nHead: number = 12,
         nEmbd: number = 768,
-        windowPattern: string = "SSSL",
     ) {
         this.sequenceLen = sequenceLen;
         this.vocabSize = vocabSize;
         this.nLayer = nLayer;
         this.nHead = nHead;
-        this.nKvHead = nKvHead;
         this.nEmbd = nEmbd;
-        this.windowPattern = windowPattern;
     }
 }
 
 class GPT2Attention extends Module {
-    layerIndex: number;
     nHead: number;
-    nKvHead: number;
     nEmbd: number;
     headDim: number;
     qProj: Linear;
     kProj: Linear;
     vProj: Linear;
     oProj: Linear;
-    veGateChannels: number;
-    veGate: Linear | null;
 
-    constructor(config: GPT2Config, layerIndex: number) {
+    constructor(config: GPT2Config) {
         super();
 
-        this.layerIndex = layerIndex;
         this.nHead = config.nHead;
-        this.nKvHead = config.nKvHead;
         this.nEmbd = config.nEmbd;
         this.headDim = this.nEmbd / this.nHead;
-        this.qProj = new Linear(this.nEmbd, this.nHead * this.headDim);
-        this.kProj = new Linear(this.nEmbd, this.nKvHead * this.headDim);
-        this.vProj = new Linear(this.nEmbd, this.nKvHead * this.headDim);
+        this.qProj = new Linear(this.nEmbd, this.nEmbd);
+        this.kProj = new Linear(this.nEmbd, this.nEmbd);
+        this.vProj = new Linear(this.nEmbd, this.nEmbd);
         this.oProj = new Linear(this.nEmbd, this.nEmbd);
     }
 
-    forward(x_BD: np.Array) {
+    forward(x: np.Array, mask: np.Array): np.Array {
+        const shape = x.shape;
+        const B = shape[0];
+        const L = shape[1];
+        const H = this.nHead;
+        const K = this.headDim;
 
-        let q_BH = this.qProj.forward(x_BD)
-        let k_BH = this.kProj.forward(x_BD)
-        let v_BH = this.vProj.forward(x_BD)
+        // Project to q, k, v: [B, L, D]
+        let q = this.qProj.forward(x);
+        let k = this.kProj.forward(x);
+        let v = this.vProj.forward(x);
 
-        return x_BD;
+        // Reshape to [B, L, H, K] then transpose to [B, H, L, K]
+        q = np.transpose(np.reshape(q, [B, L, H, K]), [0, 2, 1, 3]);
+        k = np.transpose(np.reshape(k, [B, L, H, K]), [0, 2, 1, 3]);
+        v = np.transpose(np.reshape(v, [B, L, H, K]), [0, 2, 1, 3]);
+
+        // Scaled dot-product attention: [B, H, L, L]
+        let scores = np.matmul(q, np.transpose(k, [0, 1, 3, 2]));
+        scores = scores.mul(1 / Math.sqrt(K));
+        scores = scores.add(mask);
+        let weights = nn.softmax(scores, -1);
+        let out = np.matmul(weights, v); // [B, H, L, K]
+
+        // Reshape back to [B, L, D]
+        out = np.transpose(out, [0, 2, 1, 3]);
+        out = np.reshape(out, [B, L, this.nEmbd]);
+        return this.oProj.forward(out);
     }
 }
 
@@ -85,7 +95,6 @@ class GPT2Attention extends Module {
 class GPT2MLP extends Module {
     upProj: Linear;
     downProj: Linear;
-    // act_fn
 
     constructor(config: GPT2Config) {
         super();
@@ -93,57 +102,88 @@ class GPT2MLP extends Module {
         this.downProj = new Linear(config.nEmbd * 4, config.nEmbd);
     }
 
-    forward(x_BD: np.Array) {
-        let x_BF = this.upProj.forward(x_BD)
-        x_BF = nn.gelu(x_BF)
-        x_BF = this.downProj.forward(x_BF)
-        return x_BF
+    forward(x: np.Array): np.Array {
+        let h = this.upProj.forward(x);
+        h = nn.gelu(h, { approximate: true });
+        h = this.downProj.forward(h);
+        return h;
     }
 }
 
 class GPT2Block extends Module {
-    attention: GPT2Attention;
+    self_attn: GPT2Attention;
     mlp: GPT2MLP;
     inputLayerNorm: LayerNorm;
     postAttentionLayerNorm: LayerNorm;
 
     constructor(config: GPT2Config) {
         super();
-        this.attention = new GPT2Attention(config, 0);
+        this.inputLayerNorm = new LayerNorm(config.nEmbd);
+        this.postAttentionLayerNorm = new LayerNorm(config.nEmbd);
+        this.self_attn = new GPT2Attention(config);
         this.mlp = new GPT2MLP(config);
     }
 
-    forward(x_BD: np.Array) {
-        let residual = x_BD;
-        x_BD = this.inputLayerNorm.forward(x_BD)
-        x_BD = this.attention.forward(x_BD)
-        x_BD = this.postAttentionLayerNorm.forward(x_BD)
-        x_BD = x_BD.add(residual)
-        x_BD = this.mlp.forward(x_BD)
-        x_BD = x_BD.add(residual)
-        return x_BD
+    forward(x: np.Array, mask: np.Array): np.Array {
+        // Pre-LN attention with residual
+        let residual = x;
+        x = this.inputLayerNorm.forward(x);
+        x = this.self_attn.forward(x, mask);
+        x = x.add(residual);
+
+        // Pre-LN MLP with residual
+        residual = x;
+        x = this.postAttentionLayerNorm.forward(x);
+        x = this.mlp.forward(x);
+        x = x.add(residual);
+        return x;
     }
 }
 
 class GPT2 extends Module {
     config: GPT2Config;
-    layers: Sequential;
+    embed_tokens: Embed;
+    embed_positions: Embed;
+    blocks: GPT2Block[];
+    lnF: LayerNorm;
+    lmHead: Linear;
 
     constructor(config: GPT2Config) {
         super();
         this.config = config;
 
-        let _layers: GPT2Block[] = [];
+        this.embed_tokens = new Embed(config.vocabSize, config.nEmbd);
+        this.embed_positions = new Embed(config.sequenceLen, config.nEmbd);
+
+        this.blocks = [];
         for (let i = 0; i < config.nLayer; i++) {
-            _layers.push(new GPT2Block(config));
+            this.blocks.push(new GPT2Block(config));
         }
-        this.layers = new Sequential(_layers);
+
+        this.lnF = new LayerNorm(config.nEmbd);
+        this.lmHead = new Linear(config.nEmbd, config.vocabSize, false);
     }
 
-    forward(x_BD: np.Array) {
-        x_BD = this.layers.forward(x_BD)
-        return x_BD;
+    forward(inputIds: np.Array): np.Array {
+        const L = inputIds.shape[1];
+
+        // Token + positional embeddings
+        const positions = np.arange(L);
+        let x = this.embed_tokens.forward(inputIds).add(this.embed_positions.forward(positions));
+
+        // Causal mask: [1, 1, L, L]
+        const mask = createCausalMask(L);
+
+        // Transformer blocks
+        for (const block of this.blocks) {
+            x = block.forward(x, mask);
+        }
+
+        // Final layer norm + LM head
+        x = this.lnF.forward(x);
+        const logits = this.lmHead.forward(x);
+        return logits;
     }
 }
 
-export { GPT2 };
+export { GPT2, GPT2Config };
