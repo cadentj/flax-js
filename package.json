@@ -3,7 +3,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*"
+    "./models": "./packages/models/index.ts",
+    "./serve": "./packages/serve/index.ts"
   },
   "dependencies": {
     "@jax-js/jax": "link:/Users/caden/Programming/jax-js",

@@ -1,20 +1,17 @@
 {
   "compilerOptions": {
     "strict": true,
-    "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": ".",
-    "declaration": true,
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
       "flax-js": ["./src/index.ts"],
-      "flax-js/*": ["./src/*"]
+      "flax-js/models": ["./packages/models/src/index.ts"],
+      "flax-js/serve": ["./packages/serve/src/index.ts"]
     }
   },
-  "include": ["src", "models"]
+  "include": ["src", "packages/models/src", "packages/serve/src", "benchmark"]
 }

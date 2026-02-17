@@ -6,7 +6,7 @@ import {
     runLinear,
     type LayerNorm,
     runLayerNorm,
-} from "../../nn";
+} from "flax-js";
 
 type GPT2Config = {
     numHeads: number;
@@ -89,19 +89,18 @@ const runGPT2Layer = jit(function runGPT2Layer(
 const runGPT2 = jit(function runGPT2(
     { wte, wpe, h, lnF, lmHead }: GPT2,
     x: np.Array,
+    positionIds: np.Array,
     { numHeads }: GPT2Config,
 ): np.Array {
-    console.log("point 2", x.refCount);
-    const L = x.shape[1];
-    const positions = np.arange(L).astype(np.int32);
-    let out = runEmbed(wte, x).add(runEmbed(wpe, positions));
+    let out = runEmbed(wte, x)
+    let positionEmbeds = runEmbed(wpe, positionIds);
+    out = out.add(positionEmbeds);
     for (const layer of h) {
-        console.log("point 3", out.refCount);
         out = runGPT2Layer(layer, out, { numHeads });
     }
     out = runLayerNorm(lnF, out);
     out = runLinear(lmHead, out);
     return out;
-}, { staticArgnums: [2] });
+}, { staticArgnums: [3] });
 
 export { runGPT2, GPT2 }

@@ -22,6 +22,36 @@ importers:
         specifier: ^25.2.3
         version: 25.2.3
 
+  packages/models:
+    dependencies:
+      '@jax-js/jax':
+        specifier: link:/Users/caden/Programming/jax-js
+        version: link:../../../jax-js
+      '@jax-js/loaders':
+        specifier: link:/Users/caden/Programming/jax-js/packages/loaders
+        version: link:../../../jax-js/packages/loaders
+      flax-js:
+        specifier: workspace:*
+        version: link:../..
+
+  packages/serve:
+    dependencies:
+      flax-js:
+        specifier: workspace:*
+        version: link:../..
+
+  scratch:
+    dependencies:
+      '@jax-js/jax':
+        specifier: link:/Users/caden/Programming/jax-js
+        version: link:../../jax-js
+      '@jax-js/loaders':
+        specifier: link:/Users/caden/Programming/jax-js/packages/loaders
+        version: link:../../jax-js/packages/loaders
+      flax-js:
+        specifier: workspace:*
+        version: link:..
+
 packages:
 
   '@types/node@25.2.3':

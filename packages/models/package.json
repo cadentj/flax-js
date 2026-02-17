@@ -1,0 +1,12 @@
+{
+  "name": "flax-js-models",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "flax-js": "workspace:*",
+    "@jax-js/jax": "link:/Users/caden/Programming/jax-js",
+    "@jax-js/loaders": "link:/Users/caden/Programming/jax-js/packages/loaders"
+  }
+}

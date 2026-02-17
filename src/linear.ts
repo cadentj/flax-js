@@ -15,12 +15,12 @@ export const runLinear = jit(function runLinear(
 });
 
 export type Embed = {
-    embedding: np.Array;
+    weight: np.Array;
 };
 
 export const runEmbed = jit(function runEmbed(
-    { embedding }: Embed,
+    { weight }: Embed,
     x: np.Array,
 ): np.Array {
-    return np.take(embedding, x, 0);
+    return np.take(weight, x, 0);
 });

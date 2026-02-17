@@ -3,10 +3,6 @@ import { safetensors, WeightMapper } from "@jax-js/loaders";
 import type { GPT2 } from "./model";
 
 const weightMapper = new WeightMapper({
-  exact: {
-    "wte.weight": "wte.embedding",
-    "wpe.weight": "wpe.embedding",
-  },
   substring: {
     ".ln_1.": ".ln1.",
     ".ln_2.": ".ln2.",
@@ -57,7 +53,7 @@ export function fromSafetensors(file: safetensors.File): GPT2 {
   }
 
   // Weight tying: lmHead shares weights with wte embedding
-  hydrated["lmHead.weight"] = hydrated["wte.embedding"].ref;
+  hydrated["lmHead.weight"] = hydrated["wte.weight"].ref;
 
   return safetensors.toNested(hydrated) as GPT2;
 }
