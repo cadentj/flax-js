@@ -24,6 +24,9 @@ importers:
 
   packages/models:
     dependencies:
+      '@huggingface/tokenizers':
+        specifier: ^0.1.1
+        version: 0.1.1
       '@jax-js/jax':
         specifier: link:/Users/caden/Programming/jax-js
         version: link:../../../jax-js
@@ -54,6 +57,9 @@ importers:
 
 packages:
 
+  '@huggingface/tokenizers@0.1.1':
+    resolution: {integrity: sha512-hNVdOq4kAONjz9FqL6agX1vfpJ57Z9cUDQSVSqRMLT1x31y84XbOXDw2WdxCUiseizA+LEHehwwLLkGsyu8iXQ==}
+
   '@types/node@25.2.3':
     resolution: {integrity: sha512-m0jEgYlYz+mDJZ2+F4v8D1AyQb+QzsNqRuI7xg1VQX/KlKS0qT9r1Mo16yo5F/MtifXFgaofIFsdFMox2SxIbQ==}
 
@@ -61,6 +67,8 @@ packages:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
 snapshots:
+
+  '@huggingface/tokenizers@0.1.1': {}
 
   '@types/node@25.2.3':
     dependencies:

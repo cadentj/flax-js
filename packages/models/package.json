@@ -5,8 +5,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "flax-js": "workspace:*",
+    "@huggingface/tokenizers": "^0.1.1",
     "@jax-js/jax": "link:/Users/caden/Programming/jax-js",
-    "@jax-js/loaders": "link:/Users/caden/Programming/jax-js/packages/loaders"
+    "@jax-js/loaders": "link:/Users/caden/Programming/jax-js/packages/loaders",
+    "flax-js": "workspace:*"
   }
 }

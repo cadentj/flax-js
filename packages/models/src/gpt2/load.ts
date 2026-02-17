@@ -1,6 +1,7 @@
 import { numpy as np } from "@jax-js/jax";
 import { safetensors, WeightMapper } from "@jax-js/loaders";
 import type { GPT2 } from "./model";
+import { Tokenizer } from "@huggingface/tokenizers";
 
 const weightMapper = new WeightMapper({
   substring: {
@@ -56,4 +57,8 @@ export function fromSafetensors(file: safetensors.File): GPT2 {
   hydrated["lmHead.weight"] = hydrated["wte.weight"].ref;
 
   return safetensors.toNested(hydrated) as GPT2;
+}
+
+export function loadTokenizer(data: any, config: any): Tokenizer {
+  return new Tokenizer(data, config);
 }
