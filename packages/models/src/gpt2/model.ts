@@ -1,4 +1,4 @@
-import { numpy as np, nn, jit } from "@jax-js/jax";
+import { numpy as np, nn, jit, tree } from "@jax-js/jax";
 import {
     type Embed,
     runEmbed,
@@ -23,7 +23,7 @@ export function emptyKVCache(dtype: np.DType): KVCache {
 type GPT2State = {
     kvCaches: KVCache[];
     kvCacheLen: number;
-}
+};
 
 type GPT2Config = {
     numHeads: number;
@@ -48,40 +48,33 @@ function runGPT2Attention(
     { qProj, kProj, vProj, oProj }: GPT2Attention,
     x: np.Array,
     kvCache: KVCache,
-    kvCacheLen: number,
     numHeads: number,
-): np.Array {
+): [np.Array, KVCache] {
     const [B, L, D] = x.shape;
     const headDim = D / numHeads;
 
-    // Project to q, k, v: [B, L, D]
     let q = runLinear(qProj, x.ref);
     let k = runLinear(kProj, x.ref);
     let v = runLinear(vProj, x);
 
-    // Reshape to [B, L, H, K] for multi-head attention
     q = q.reshape([B, L, numHeads, headDim]);
     k = k.reshape([B, L, numHeads, headDim]);
     v = v.reshape([B, L, numHeads, headDim]);
 
-    if (kvCacheLen > 0) {
-        // Concat along the sequence dimension
+    const isPrefill = kvCache.key.size === 0;
+    if (!isPrefill) {
         k = np.concatenate([kvCache.key, k], 1);
         v = np.concatenate([kvCache.value, v], 1);
-
-        kvCache.key = k;
-        kvCache.value = v;
-        kvCacheLen += 1;
+    } else {
+        tree.dispose(kvCache);
     }
 
-    // Scaled dot-product attention with causal mask: [B, L, H, K]
-    let out = nn.dotProductAttention(q, k, v, { isCausal: true });
+    let out = nn.dotProductAttention(q, k.ref, v.ref, { isCausal: true });
 
-    // Reshape back to [B, L, D] and apply output projection
     out = out.reshape([B, L, D]);
     out = runLinear(oProj, out);
 
-    return out;
+    return [out, { key: k, value: v }];
 }
 
 type GPT2MLP = {
@@ -108,43 +101,45 @@ const runGPT2Layer = jit(
         { ln1, attn, ln2, mlp }: GPT2Layer,
         x: np.Array,
         kvCache: KVCache,
-        kvCacheLen: number,
         { numHeads }: GPT2Config,
-    ): np.Array {
-        let out = runGPT2Attention(attn, runLayerNorm(ln1, x.ref), kvCache, kvCacheLen, numHeads);
+    ): [np.Array, KVCache] {
+        let out: np.Array;
+        [out, kvCache] = runGPT2Attention(
+            attn,
+            runLayerNorm(ln1, x.ref),
+            kvCache,
+            numHeads,
+        );
         x = x.add(out);
         out = runGPT2MLP(mlp, runLayerNorm(ln2, x.ref));
         x = x.add(out);
-        return x;
+        return [x, kvCache];
     },
-    { staticArgnums: [4] },
+    { staticArgnums: [3] },
 );
 
-export const runGPT2 = jit(
-    function runGPT2(
-        { wte, wpe, h, lnF, lmHead }: GPT2,
-        x: np.Array,
-        positionIds: np.Array,
-        state: GPT2State,
-        { numHeads }: GPT2Config,
-    ): np.Array {
-        let out = runEmbed(wte, x);
-        let positionEmbeds = runEmbed(wpe, positionIds);
-        out = out.add(positionEmbeds);
+export function runGPT2(
+    { wte, wpe, h, lnF, lmHead }: GPT2,
+    x: np.Array,
+    state: GPT2State,
+    { numHeads }: GPT2Config,
+): [np.Array, GPT2State] {
+    const L = x.shape[1];
+    let out = runEmbed(wte, x);
+    const positionIds = np.arange(state.kvCacheLen, state.kvCacheLen + L).astype(np.int32);
+    let positionEmbeds = runEmbed(wpe, positionIds);
+    out = out.add(positionEmbeds);
 
-        console.log(out.refCount);
-        for (let layerIdx = 0; layerIdx < h.length; layerIdx++) {
-            const layer = h[layerIdx];
-            const kvCache = state.kvCaches[layerIdx];
-            const kvCacheLen = state.kvCacheLen;
-            out = runGPT2Layer(layer, out, kvCache, kvCacheLen, { numHeads });
-        }
-        out = runLayerNorm(lnF, out);
-        out = runLinear(lmHead, out);
-        return out;
-    },
-    { staticArgnums: [4] },
-);
+    for (let layerIdx = 0; layerIdx < h.length; layerIdx++) {
+        [out, state.kvCaches[layerIdx]] = runGPT2Layer(
+            h[layerIdx], out, state.kvCaches[layerIdx], { numHeads },
+        );
+    }
+    state.kvCacheLen += L;
+    out = runLayerNorm(lnF, out);
+    out = runLinear(lmHead, out);
+    return [out, state];
+}
 
 export function generateGPT2(
     model: GPT2,
@@ -152,25 +147,28 @@ export function generateGPT2(
     { numHeads }: GPT2Config,
     maxNewTokens: number,
 ): np.Array {
-    // Build KV cache for each layer
-    const kvCaches = []
+    const kvCaches = [];
     for (let i = 0; i < model.h.length; i++) {
         kvCaches.push(emptyKVCache(np.float32));
     }
-    const state = {
+    let state: GPT2State = {
         kvCaches,
         kvCacheLen: 0,
     };
 
-    // Create position IDs
-    const L = inputIds.shape[1];
-    const positionIds = np.arange(L).astype(np.int32);
-
-    // Run the model
-    let out = runGPT2(model, inputIds, positionIds, state, { numHeads });
+    // Prefill: run on full input sequence
+    let out: np.Array;
+    [out, state] = runGPT2(tree.ref(model), inputIds.ref, state, { numHeads });
 
     for (let i = 0; i < maxNewTokens; i++) {
-        out = runGPT2(model, out, positionIds, state, { numHeads });
+        const lastToken = out.slice([], -1, []);
+        const probs = nn.softmax(lastToken, -1);
+        const pred = np.argmax(probs, -1).reshape([1, 1]);
+
+        inputIds = np.concatenate([inputIds, pred.ref], 1);
+
+        // Decode: only pass new token, KV cache has the rest
+        [out, state] = runGPT2(tree.ref(model), pred, state, { numHeads });
     }
-    return out;
+    return inputIds;
 }
